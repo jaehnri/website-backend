@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	spotifyapi "github.com/jaehnri/website-backend/pkg/spotify"
 	_ "github.com/joho/godotenv/autoload"
 )
 
@@ -28,27 +29,6 @@ type Spotify struct {
 
 	accessToken  string
 	refreshToken string
-}
-
-// Define the struct to hold the expected JSON response
-type RefreshTokenResponse struct {
-	AccessToken string `json:"access_token"`
-}
-
-type CurrentPlayingResponse struct {
-	IsPlaying  bool `json:"is_playing"`
-	ProgressMs int  `json:"progress_ms"`
-	Item       Item `json:"item"`
-}
-
-type Item struct {
-	DurationMs int      `json:"duration_ms"`
-	Name       string   `json:"name"`
-	Artists    []Artist `json:"artists"`
-}
-
-type Artist struct {
-	Name string `json:"name"`
 }
 
 func NewSpotify() *Spotify {
@@ -114,7 +94,7 @@ func (s *Spotify) refreshAccessToken() {
 		return
 	}
 
-	var accessTokenResponse RefreshTokenResponse
+	var accessTokenResponse spotifyapi.RefreshTokenResponse
 	err = json.Unmarshal(bodyBytes, &accessTokenResponse)
 	if err != nil {
 		log.Panic("Error unmarshaling JSON:", err)
@@ -154,14 +134,14 @@ func (s *Spotify) getCurrentPlaying() {
 		return
 	}
 
-	var currentPlayingResponse CurrentPlayingResponse
+	var currentPlayingResponse spotifyapi.CurrentPlayingResponse
 	err = json.Unmarshal(bodyBytes, &currentPlayingResponse)
 	if err != nil {
 		log.Panic("Error unmarshaling JSON:", err)
 		return
 	}
 
-	log.Println("Song playing:", currentPlayingResponse.Item.Name)
+	log.Println("Song playing:", currentPlayingResponse.Item.SongName)
 
 }
 
