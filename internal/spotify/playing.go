@@ -121,7 +121,8 @@ func convertAPIResponseToBackendResponse(apiResponse *spotifyapi.CurrentPlayingR
 		DurationMs: apiResponse.Item.DurationMs,
 		Song:       apiResponse.Item.SongName,
 
-		// TODO: Perhaps do some joining logic here IDK
+		// Too many artists make it ugly. The first one is enough.
+		// Plus, feats often include other artists in the name anyway.
 		Artist: apiResponse.Item.Artists[0].Name,
 	}
 }
