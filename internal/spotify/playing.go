@@ -1,40 +1,22 @@
 package spotify
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
-	"net/url"
-	"os"
-	"strings"
-	"time"
 
 	spotifyapi "github.com/jaehnri/website-backend/pkg/spotify"
 	_ "github.com/joho/godotenv/autoload"
 )
 
 const (
-	ClientIDEnv     = "CLIENT_ID_ENV"
-	ClientSecretEnv = "CLIENT_SECRET_ENV"
-	RefreshTokenEnv = "REFRESH_TOKEN_ENV"
-
-	TokenEndpoint            = "https://accounts.spotify.com/api/token"
 	CurrentlyPlayingEndpoint = "https://api.spotify.com/v1/me/player/currently-playing"
 )
 
 type SpotifyClient struct {
-	clientID     string
-	clientSecret string
-	refreshToken string
-
-	accessToken string
-
-	// expiresAt hold the time when the access token above expires.
-	expiresAt time.Time
-
-	httpClient http.Client
+	authProvider *AuthProvider
+	httpClient   http.Client
 }
 
 type CurrentSong struct {
@@ -48,25 +30,8 @@ type CurrentSong struct {
 }
 
 func NewSpotifyClient() *SpotifyClient {
-	clientID, exists := os.LookupEnv(ClientIDEnv)
-	if !exists {
-		log.Panic("couldn't retrieve client ID")
-	}
-
-	clientSecret, exists := os.LookupEnv(ClientSecretEnv)
-	if !exists {
-		log.Panic("couldn't retrieve client secret")
-	}
-
-	refreshToken, exists := os.LookupEnv(RefreshTokenEnv)
-	if !exists {
-		log.Panic("couldn't retrieve refresh token")
-	}
-
 	return &SpotifyClient{
-		clientID:     clientID,
-		clientSecret: clientSecret,
-		refreshToken: refreshToken,
+		authProvider: NewAuthProvider(),
 		httpClient:   http.Client{},
 	}
 }
@@ -74,12 +39,6 @@ func NewSpotifyClient() *SpotifyClient {
 // HandleNowPlaying receives an HTTP request and returns the current playing song
 // in CurrentSong format.
 func (s *SpotifyClient) HandleNowPlaying(w http.ResponseWriter, r *http.Request) {
-	err := s.refreshAccessToken()
-	if err != nil {
-		http.Error(w, "failed to refresh access token", http.StatusInternalServerError)
-		return
-	}
-
 	playingSong, err := s.getCurrentPlayingSong()
 	if err != nil {
 		http.Error(w, "failed to fetch current playing song", http.StatusInternalServerError)
@@ -93,54 +52,6 @@ func (s *SpotifyClient) HandleNowPlaying(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "failed to encode json response", http.StatusInternalServerError)
 		return
 	}
-}
-
-func (s *SpotifyClient) getAccessToken() (string, error) {
-	// Avoid refreshing access token if there's a valid one
-	if time.Now().Before(s.expiresAt) {
-		return s.accessToken, nil
-	}
-
-	// Token is refreshed if:
-	// 1. Access token was never set
-	// 2. Token has expired
-	err := s.refreshAccessToken()
-	if err != nil {
-		log.Println("failed to refresh access token: ", err)
-		return "", err
-	}
-
-	return s.accessToken, nil
-}
-
-// TODO: We should have an auth module so clients can't access empty or expired tokens.
-func (s *SpotifyClient) refreshAccessToken() error {
-	// Avoid refreshing if current token is still valid.
-	if time.Now().Before(s.expiresAt) {
-		log.Println("asked to refresh token but current is still good")
-		return nil
-	}
-
-	req, err := s.buildRefreshTokenRequest()
-	if err != nil {
-		return err
-	}
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	refreshTokenResponse, err := parseRefreshTokenResponse(resp)
-	if err != nil {
-		return err
-	}
-
-	log.Println("token has been refreshed!!")
-	s.accessToken = refreshTokenResponse.AccessToken
-	s.expiresAt = time.Now().Add(time.Duration(refreshTokenResponse.ExpiresIn) * time.Second)
-	return nil
 }
 
 func (s *SpotifyClient) getCurrentPlayingSong() (*CurrentSong, error) {
@@ -163,30 +74,6 @@ func (s *SpotifyClient) getCurrentPlayingSong() (*CurrentSong, error) {
 	return convertAPIResponseToBackendResponse(currentPlayingResponse), nil
 }
 
-func (s *SpotifyClient) buildRefreshTokenRequest() (*http.Request, error) {
-	header := []byte(s.clientID + ":" + s.clientSecret)
-	encodedAuthorizationHeader := base64.RawStdEncoding.EncodeToString(header)
-
-	// Create form data
-	formData := url.Values{}
-	formData.Set("grant_type", "refresh_token")
-	formData.Set("refresh_token", s.refreshToken)
-	encodedFormData := formData.Encode()
-
-	// Create HTTP request
-	req, err := http.NewRequest("POST", TokenEndpoint, strings.NewReader(encodedFormData))
-	if err != nil {
-		log.Println("Error creating request:", err)
-		return nil, err
-	}
-
-	// Set headers
-	req.Header.Set("Authorization", "Basic "+encodedAuthorizationHeader)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	return req, nil
-}
-
 func (s *SpotifyClient) buildCurrentPlayingSongRequest() (*http.Request, error) {
 	req, err := http.NewRequest("GET", CurrentlyPlayingEndpoint, nil)
 	if err != nil {
@@ -194,7 +81,7 @@ func (s *SpotifyClient) buildCurrentPlayingSongRequest() (*http.Request, error) 
 		return nil, err
 	}
 
-	accessToken, err := s.getAccessToken()
+	accessToken, err := s.authProvider.GetAccessToken()
 	if err != nil {
 		log.Println("failed to fetch access token:", err)
 		return nil, err
@@ -202,23 +89,6 @@ func (s *SpotifyClient) buildCurrentPlayingSongRequest() (*http.Request, error) 
 
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	return req, err
-}
-
-func parseRefreshTokenResponse(resp *http.Response) (*spotifyapi.RefreshTokenResponse, error) {
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Println("failed to read refresh token response body")
-		return nil, err
-	}
-
-	var refreshTokenResponse spotifyapi.RefreshTokenResponse
-	err = json.Unmarshal(bodyBytes, &refreshTokenResponse)
-	if err != nil {
-		log.Println("failed to unmarshal access token JSON:", err)
-		return nil, err
-	}
-
-	return &refreshTokenResponse, nil
 }
 
 func parseCurrentPlayingSongResponse(resp *http.Response) (*spotifyapi.CurrentPlayingResponse, error) {
