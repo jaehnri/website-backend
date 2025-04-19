@@ -1,4 +1,9 @@
-website-backend
-
+# Local config files
 .env
 .vscode/
+
+# Build directories
+bin/
+
+# Binaries
+website-backend

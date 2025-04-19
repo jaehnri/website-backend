@@ -1,11 +1,12 @@
 package server
 
-import(
+import (
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+
 	"github.com/jaehnri/website-backend/internal/spotify"
 )
 
@@ -22,8 +23,8 @@ func NewServer(httpAddress string) *Server {
 func (s *Server) startHTTPServer() {
 	log.Println("starting sample HTTP server")
 
-	http.HandleFunc("/spotify", spotify.LogSpotify)
-	
+	http.HandleFunc("/spotify", spotify.HandleCurrentSongRequest)
+
 	log.Fatal(http.ListenAndServe(s.httpAddress, nil))
 }
 

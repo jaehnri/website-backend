@@ -57,6 +57,20 @@ func NewSpotify() *Spotify {
 	}
 }
 
+func HandleCurrentSongRequest(w http.ResponseWriter, r *http.Request) {
+	s := NewSpotify()
+
+	err := s.refreshAccessToken()
+	if err != nil {
+		return
+	}
+
+	err = s.getCurrentPlayingSong()
+	if err != nil {
+		return
+	}
+}
+
 func (s *Spotify) refreshAccessToken() error {
 	req, err := s.buildRefreshTokenRequest()
 	if err != nil {
@@ -97,20 +111,6 @@ func (s *Spotify) getCurrentPlayingSong() error {
 
 	log.Println("Song playing:", currentPlayingResponse.Item.SongName)
 	return nil
-}
-
-func LogSpotify(w http.ResponseWriter, r *http.Request) {
-	s := NewSpotify()
-
-	err := s.refreshAccessToken()
-	if err != nil {
-		return
-	}
-
-	err = s.getCurrentPlayingSong()
-	if err != nil {
-		return
-	}
 }
 
 func (s *Spotify) buildRefreshTokenRequest() (*http.Request, error) {
