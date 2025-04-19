@@ -23,7 +23,7 @@ const (
 	CurrentlyPlayingEndpoint = "https://api.spotify.com/v1/me/player/currently-playing"
 )
 
-type Spotify struct {
+type SpotifyClient struct {
 	clientID     string
 	clientSecret string
 
@@ -43,7 +43,7 @@ type CurrentSong struct {
 	Artist string `json:"artist"`
 }
 
-func NewSpotify() *Spotify {
+func NewSpotifyClient() *SpotifyClient {
 	clientID, exists := os.LookupEnv(ClientIDEnv)
 	if !exists {
 		log.Panic("couldn't retrieve client ID")
@@ -59,7 +59,7 @@ func NewSpotify() *Spotify {
 		log.Panic("couldn't retrieve refresh token")
 	}
 
-	return &Spotify{
+	return &SpotifyClient{
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		refreshToken: refreshToken,
@@ -67,11 +67,9 @@ func NewSpotify() *Spotify {
 	}
 }
 
-// HandleCurrentSongRequest handles an HTTP request and returns the current playing song
+// HandleNowPlaying receives an HTTP request and returns the current playing song
 // in CurrentSong format.
-func HandleCurrentSongRequest(w http.ResponseWriter, r *http.Request) {
-	s := NewSpotify()
-
+func (s *SpotifyClient) HandleNowPlaying(w http.ResponseWriter, r *http.Request) {
 	// TODO: Instead of fetching a new access token everytime, I should check if the
 	// current access token is still valid.
 	err := s.refreshAccessToken()
@@ -95,7 +93,7 @@ func HandleCurrentSongRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Spotify) refreshAccessToken() error {
+func (s *SpotifyClient) refreshAccessToken() error {
 	req, err := s.buildRefreshTokenRequest()
 	if err != nil {
 		return err
@@ -116,7 +114,7 @@ func (s *Spotify) refreshAccessToken() error {
 	return nil
 }
 
-func (s *Spotify) getCurrentPlayingSong() (*CurrentSong, error) {
+func (s *SpotifyClient) getCurrentPlayingSong() (*CurrentSong, error) {
 	req, err := s.buildCurrentPlayingSongRequest()
 	if err != nil {
 		return nil, err
@@ -136,7 +134,7 @@ func (s *Spotify) getCurrentPlayingSong() (*CurrentSong, error) {
 	return convertAPIResponseToBackendResponse(currentPlayingResponse), nil
 }
 
-func (s *Spotify) buildRefreshTokenRequest() (*http.Request, error) {
+func (s *SpotifyClient) buildRefreshTokenRequest() (*http.Request, error) {
 	header := []byte(s.clientID + ":" + s.clientSecret)
 	encodedAuthorizationHeader := base64.RawStdEncoding.EncodeToString(header)
 
@@ -160,7 +158,7 @@ func (s *Spotify) buildRefreshTokenRequest() (*http.Request, error) {
 	return req, nil
 }
 
-func (s *Spotify) buildCurrentPlayingSongRequest() (*http.Request, error) {
+func (s *SpotifyClient) buildCurrentPlayingSongRequest() (*http.Request, error) {
 	req, err := http.NewRequest("GET", CurrentlyPlayingEndpoint, nil)
 	if err != nil {
 		log.Println("failed to create current playing song request:", err)

@@ -11,21 +11,21 @@ import (
 )
 
 type Server struct {
-	httpAddress string
-
-	// TODO: The server should be composed of a spotify module.
+	httpAddress   string
+	spotifyClient spotify.SpotifyClient
 }
 
 func NewServer(httpAddress string) *Server {
 	return &Server{
-		httpAddress: httpAddress,
+		httpAddress:   httpAddress,
+		spotifyClient: *spotify.NewSpotifyClient(),
 	}
 }
 
 func (s *Server) startHTTPServer() {
-	log.Println("starting sample HTTP server")
+	log.Println("starting HTTP server")
 
-	http.HandleFunc("/spotify", spotify.HandleCurrentSongRequest)
+	http.HandleFunc("/now-playing", s.spotifyClient.HandleNowPlaying)
 
 	log.Fatal(http.ListenAndServe(s.httpAddress, nil))
 }
