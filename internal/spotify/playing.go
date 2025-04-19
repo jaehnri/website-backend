@@ -67,9 +67,13 @@ func NewSpotify() *Spotify {
 	}
 }
 
+// HandleCurrentSongRequest handles an HTTP request and returns the current playing song
+// in CurrentSong format.
 func HandleCurrentSongRequest(w http.ResponseWriter, r *http.Request) {
 	s := NewSpotify()
 
+	// TODO: Instead of fetching a new access token everytime, I should check if the
+	// current access token is still valid.
 	err := s.refreshAccessToken()
 	if err != nil {
 		http.Error(w, "failed to refresh access token", http.StatusInternalServerError)

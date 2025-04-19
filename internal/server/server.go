@@ -12,6 +12,8 @@ import (
 
 type Server struct {
 	httpAddress string
+
+	// TODO: The server should be composed of a spotify module.
 }
 
 func NewServer(httpAddress string) *Server {
@@ -34,7 +36,7 @@ func (s *Server) Run() {
 	sigint := make(chan os.Signal, 1)
 	// interrupt signal sent from terminal
 	signal.Notify(sigint, os.Interrupt)
-	// sigterm signal sent from kubernetes
+	// sigterm signal sent from kubernetes (if I ever deploy this on kubernetes lol)
 	signal.Notify(sigint, syscall.SIGTERM)
 
 	<-sigint
