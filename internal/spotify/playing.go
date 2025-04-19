@@ -29,6 +29,8 @@ type Spotify struct {
 
 	accessToken  string
 	refreshToken string
+
+	httpClient http.Client
 }
 
 func NewSpotify() *Spotify {
@@ -51,104 +53,131 @@ func NewSpotify() *Spotify {
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		refreshToken: refreshToken,
+		httpClient:   http.Client{},
 	}
 }
 
-func (s *Spotify) refreshAccessToken() {
+func (s *Spotify) refreshAccessToken() error {
+	req, err := s.buildRefreshTokenRequest()
+	if err != nil {
+		return err
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	refreshTokenResponse, err := parseRefreshTokenResponse(resp)
+	if err != nil {
+		return err
+	}
+
+	s.accessToken = refreshTokenResponse.AccessToken
+	return nil
+}
+
+func (s *Spotify) getCurrentPlayingSong() error {
+	req, err := s.buildCurrentPlayingSongRequest()
+	if err != nil {
+		return err
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	currentPlayingResponse, err := parseCurrentPlayingSongResponse(resp)
+	if err != nil {
+		return err
+	}
+
+	log.Println("Song playing:", currentPlayingResponse.Item.SongName)
+	return nil
+}
+
+func LogSpotify(w http.ResponseWriter, r *http.Request) {
+	s := NewSpotify()
+
+	err := s.refreshAccessToken()
+	if err != nil {
+		return
+	}
+
+	err = s.getCurrentPlayingSong()
+	if err != nil {
+		return
+	}
+}
+
+func (s *Spotify) buildRefreshTokenRequest() (*http.Request, error) {
 	header := []byte(s.clientID + ":" + s.clientSecret)
 	encodedAuthorizationHeader := base64.RawStdEncoding.EncodeToString(header)
 
-	// Create the form data
+	// Create form data
 	formData := url.Values{}
 	formData.Set("grant_type", "refresh_token")
 	formData.Set("refresh_token", s.refreshToken)
 	encodedFormData := formData.Encode()
 
-	// Create the HTTP request
+	// Create HTTP request
 	req, err := http.NewRequest("POST", TokenEndpoint, strings.NewReader(encodedFormData))
 	if err != nil {
-		log.Panic("Error creating request:", err)
-		return
+		log.Println("Error creating request:", err)
+		return nil, err
 	}
 
-	// Set the headers
+	// Set headers
 	req.Header.Set("Authorization", "Basic "+encodedAuthorizationHeader)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	// Create an HTTP client
-	client := &http.Client{}
-
-	// Send the request
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Println("Error sending request:", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	// Print the response status
-	log.Println("Status:", resp.Status)
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Panic("Error reading response body:", err)
-		return
-	}
-
-	var accessTokenResponse spotifyapi.RefreshTokenResponse
-	err = json.Unmarshal(bodyBytes, &accessTokenResponse)
-	if err != nil {
-		log.Panic("Error unmarshaling JSON:", err)
-		return
-	}
-
-	s.accessToken = accessTokenResponse.AccessToken
-	log.Println("Access Token:", s.accessToken)
+	return req, nil
 }
 
-func (s *Spotify) getCurrentPlaying() {
-	// Create the HTTP request
+func (s *Spotify) buildCurrentPlayingSongRequest() (*http.Request, error) {
 	req, err := http.NewRequest("GET", CurrentlyPlayingEndpoint, nil)
 	if err != nil {
-		log.Panic("Error creating request:", err)
-		return
+		log.Println("failed to create current playing song request:", err)
+		return nil, err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+s.accessToken)
+	return req, err
+}
 
-	// Create an HTTP client
-	client := &http.Client{}
-
-	// Send the request
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Println("Error sending request:", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	// Print the response status
-	log.Println("Status:", resp.Status)
+func parseRefreshTokenResponse(resp *http.Response) (*spotifyapi.RefreshTokenResponse, error) {
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Panic("Error reading response body:", err)
-		return
+		log.Println("failed to read refresh token response body")
+		return nil, err
+	}
+
+	var refreshTokenResponse spotifyapi.RefreshTokenResponse
+	err = json.Unmarshal(bodyBytes, &refreshTokenResponse)
+	if err != nil {
+		log.Println("failed to unmarshal access token JSON:", err)
+		return nil, err
+	}
+
+	return &refreshTokenResponse, nil
+}
+
+func parseCurrentPlayingSongResponse(resp *http.Response) (*spotifyapi.CurrentPlayingResponse, error) {
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Panic("failed to read current playing song response body:", err)
+		return nil, err
 	}
 
 	var currentPlayingResponse spotifyapi.CurrentPlayingResponse
 	err = json.Unmarshal(bodyBytes, &currentPlayingResponse)
 	if err != nil {
-		log.Panic("Error unmarshaling JSON:", err)
-		return
+		log.Panic("failed to unmarshal current playing song JSON:", err)
+		return nil, err
 	}
 
-	log.Println("Song playing:", currentPlayingResponse.Item.SongName)
-
-}
-
-func LogSpotify(w http.ResponseWriter, r *http.Request) {
-	log.Println("received an HTTP call!")
-
-	s := NewSpotify()
-	s.refreshAccessToken()
-	s.getCurrentPlaying()
+	return &currentPlayingResponse, nil
 }
