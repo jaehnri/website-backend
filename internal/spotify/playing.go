@@ -33,6 +33,16 @@ type Spotify struct {
 	httpClient http.Client
 }
 
+type CurrentSong struct {
+	IsPlaying bool `json:"is_playing"`
+
+	ProgressMs int `json:"progress_ms"`
+	DurationMs int `json:"song_duration_ms"`
+
+	Song   string `json:"song"`
+	Artist string `json:"artist"`
+}
+
 func NewSpotify() *Spotify {
 	clientID, exists := os.LookupEnv(ClientIDEnv)
 	if !exists {
@@ -62,11 +72,21 @@ func HandleCurrentSongRequest(w http.ResponseWriter, r *http.Request) {
 
 	err := s.refreshAccessToken()
 	if err != nil {
+		http.Error(w, "failed to refresh access token", http.StatusInternalServerError)
 		return
 	}
 
-	err = s.getCurrentPlayingSong()
+	playingSong, err := s.getCurrentPlayingSong()
 	if err != nil {
+		http.Error(w, "failed to fetch current playing song", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	encoder := json.NewEncoder(w)
+	err = encoder.Encode(playingSong)
+	if err != nil {
+		http.Error(w, "failed to encode json response", http.StatusInternalServerError)
 		return
 	}
 }
@@ -92,25 +112,24 @@ func (s *Spotify) refreshAccessToken() error {
 	return nil
 }
 
-func (s *Spotify) getCurrentPlayingSong() error {
+func (s *Spotify) getCurrentPlayingSong() (*CurrentSong, error) {
 	req, err := s.buildCurrentPlayingSongRequest()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	currentPlayingResponse, err := parseCurrentPlayingSongResponse(resp)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	log.Println("Song playing:", currentPlayingResponse.Item.SongName)
-	return nil
+	return convertAPIResponseToBackendResponse(currentPlayingResponse), nil
 }
 
 func (s *Spotify) buildRefreshTokenRequest() (*http.Request, error) {
@@ -166,18 +185,36 @@ func parseRefreshTokenResponse(resp *http.Response) (*spotifyapi.RefreshTokenRes
 }
 
 func parseCurrentPlayingSongResponse(resp *http.Response) (*spotifyapi.CurrentPlayingResponse, error) {
+	// TODO: When not listening anything, the current playing endpoint returns 204.
+	// In this case, I should probably "/me/player/recently-played". This would
+	// require the "user-read-recently-played" scope though.
+	// Ignoring this use case for now.
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Panic("failed to read current playing song response body:", err)
+		log.Println("failed to read current playing song response body:", err)
 		return nil, err
 	}
 
 	var currentPlayingResponse spotifyapi.CurrentPlayingResponse
 	err = json.Unmarshal(bodyBytes, &currentPlayingResponse)
 	if err != nil {
-		log.Panic("failed to unmarshal current playing song JSON:", err)
+		log.Println("failed to unmarshal current playing song JSON:", err)
 		return nil, err
 	}
 
 	return &currentPlayingResponse, nil
+}
+
+func convertAPIResponseToBackendResponse(apiResponse *spotifyapi.CurrentPlayingResponse) *CurrentSong {
+	return &CurrentSong{
+		IsPlaying: apiResponse.IsPlaying,
+
+		ProgressMs: apiResponse.ProgressMs,
+
+		DurationMs: apiResponse.Item.DurationMs,
+		Song:       apiResponse.Item.SongName,
+
+		// TODO: Perhaps do some joining logic here IDK
+		Artist: apiResponse.Item.Artists[0].Name,
+	}
 }
