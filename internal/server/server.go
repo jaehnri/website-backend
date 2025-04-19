@@ -6,6 +6,7 @@ import(
 	"os"
 	"os/signal"
 	"syscall"
+	"github.com/jaehnri/website-backend/internal/spotify"
 )
 
 type Server struct {
@@ -21,9 +22,8 @@ func NewServer(httpAddress string) *Server {
 func (s *Server) startHTTPServer() {
 	log.Println("starting sample HTTP server")
 
-	http.HandleFunc("/spotify", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("received an HTTP call!")
-	})
+	http.HandleFunc("/spotify", spotify.LogSpotify)
+	
 	log.Fatal(http.ListenAndServe(s.httpAddress, nil))
 }
 
