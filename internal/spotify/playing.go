@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	spotifyapi "github.com/jaehnri/website-backend/pkg/spotify"
 	_ "github.com/joho/godotenv/autoload"
@@ -26,9 +27,12 @@ const (
 type SpotifyClient struct {
 	clientID     string
 	clientSecret string
-
-	accessToken  string
 	refreshToken string
+
+	accessToken string
+
+	// expiresAt hold the time when the access token above expires.
+	expiresAt time.Time
 
 	httpClient http.Client
 }
@@ -70,8 +74,6 @@ func NewSpotifyClient() *SpotifyClient {
 // HandleNowPlaying receives an HTTP request and returns the current playing song
 // in CurrentSong format.
 func (s *SpotifyClient) HandleNowPlaying(w http.ResponseWriter, r *http.Request) {
-	// TODO: Instead of fetching a new access token everytime, I should check if the
-	// current access token is still valid.
 	err := s.refreshAccessToken()
 	if err != nil {
 		http.Error(w, "failed to refresh access token", http.StatusInternalServerError)
@@ -93,7 +95,32 @@ func (s *SpotifyClient) HandleNowPlaying(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+func (s *SpotifyClient) getAccessToken() (string, error) {
+	// Avoid refreshing access token if there's a valid one
+	if time.Now().Before(s.expiresAt) {
+		return s.accessToken, nil
+	}
+
+	// Token is refreshed if:
+	// 1. Access token was never set
+	// 2. Token has expired
+	err := s.refreshAccessToken()
+	if err != nil {
+		log.Println("failed to refresh access token: ", err)
+		return "", err
+	}
+
+	return s.accessToken, nil
+}
+
+// TODO: We should have an auth module so clients can't access empty or expired tokens.
 func (s *SpotifyClient) refreshAccessToken() error {
+	// Avoid refreshing if current token is still valid.
+	if time.Now().Before(s.expiresAt) {
+		log.Println("asked to refresh token but current is still good")
+		return nil
+	}
+
 	req, err := s.buildRefreshTokenRequest()
 	if err != nil {
 		return err
@@ -110,7 +137,9 @@ func (s *SpotifyClient) refreshAccessToken() error {
 		return err
 	}
 
+	log.Println("token has been refreshed!!")
 	s.accessToken = refreshTokenResponse.AccessToken
+	s.expiresAt = time.Now().Add(time.Duration(refreshTokenResponse.ExpiresIn) * time.Second)
 	return nil
 }
 
@@ -165,7 +194,13 @@ func (s *SpotifyClient) buildCurrentPlayingSongRequest() (*http.Request, error) 
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+s.accessToken)
+	accessToken, err := s.getAccessToken()
+	if err != nil {
+		log.Println("failed to fetch access token:", err)
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
 	return req, err
 }
 
