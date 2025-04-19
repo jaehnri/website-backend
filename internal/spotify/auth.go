@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	// Refresh token 30 seconds before expiry.  This adds a buffer to
-	// avoid potential issues if there's a slight delay in the
-	// refresh process or the next API call.
+	// TokenExpiryBuffer is used to refresh tokens a bit before they expire,
+	// avoiding issues if there's a slight delay in the refresh process or
+	// the next API call.
 	TokenExpiryBuffer = 30 * time.Second
 
 	ClientIDEnv     = "CLIENT_ID_ENV"
@@ -49,7 +49,7 @@ type AuthProvider struct {
 	// lock protects accessToken.
 	lock sync.RWMutex
 
-	// expiresAt hold the time when the accessToken expires.
+	// expiresAt holds the accessToken expiration time.
 	expiresAt time.Time
 }
 
@@ -95,15 +95,14 @@ func (a *AuthProvider) GetAccessToken() (string, error) {
 	a.lock.RUnlock()
 
 	// Token is refreshed if:
-	// 1. Access token was never set
-	// 2. Token has expired
+	// 1. Access token was never set.
+	// 2. Token has expired.
 	err := a.refreshAccessToken()
 	if err != nil {
 		log.Println("failed to refresh access token: ", err)
 
-		// Note that even in case of failure, we return the old token.
-		// Token services commonly extend current tokens when there are outages.
-		// So, we can try to use the old token anyway if we can't refresh it.
+		// Note that in case of failure, we return the old token.
+		// Token services commonly extend token expirations when there are outages.
 		return a.accessToken, err
 	}
 
