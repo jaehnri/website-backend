@@ -1,0 +1,11 @@
+FROM golang:1.24.2-alpine3.21 as builder
+WORKDIR /app
+ADD ../.. .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o website-backend cmd/server/main.go
+
+FROM scratch as final
+COPY --from=builder /app/website-backend .
+EXPOSE 8080
+
+CMD ["./website-backend"]
