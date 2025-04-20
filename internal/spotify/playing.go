@@ -12,6 +12,7 @@ import (
 
 const (
 	CurrentlyPlayingEndpoint = "https://api.spotify.com/v1/me/player/currently-playing"
+	LastPlayedSongEndpoint   = "https://api.spotify.com/v1/me/player/recently-played"
 )
 
 type SpotifyClient struct {
@@ -68,12 +69,38 @@ func (s *SpotifyClient) getCurrentPlayingSong() (*CurrentSong, error) {
 	}
 	defer resp.Body.Close()
 
+	// Current playing endpoint returns 204 when no track is on.
+	// In this case, we can get the last played song instead.
+	if resp.StatusCode == 204 {
+		return s.getLastPlayedSong()
+	}
+
 	currentPlayingResponse, err := parseCurrentPlayingSongResponse(resp)
 	if err != nil {
 		return nil, err
 	}
 
-	return convertAPIResponseToBackendResponse(currentPlayingResponse), nil
+	return convertCurrentPlayingResponse(currentPlayingResponse), nil
+}
+
+func (s *SpotifyClient) getLastPlayedSong() (*CurrentSong, error) {
+	req, err := s.buildLastPlayedSongRequest()
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	lastPlayedResponse, err := parseLastPlayedSongResponse(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return convertLastPlayedToResponse(lastPlayedResponse), nil
 }
 
 func (s *SpotifyClient) buildCurrentPlayingSongRequest() (*http.Request, error) {
@@ -90,14 +117,31 @@ func (s *SpotifyClient) buildCurrentPlayingSongRequest() (*http.Request, error) 
 	}
 
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	return req, err
+	return req, nil
+}
+
+func (s *SpotifyClient) buildLastPlayedSongRequest() (*http.Request, error) {
+	req, err := http.NewRequest("GET", LastPlayedSongEndpoint, nil)
+	if err != nil {
+		log.Println("failed to create current playing song request:", err)
+		return nil, err
+	}
+
+	accessToken, err := s.authProvider.GetAccessToken()
+	if err != nil {
+		log.Println("failed to fetch access token:", err)
+		return nil, err
+	}
+
+	q := req.URL.Query()
+	q.Add("limit", "1")
+	req.URL.RawQuery = q.Encode()
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	return req, nil
 }
 
 func parseCurrentPlayingSongResponse(resp *http.Response) (*spotifyapi.CurrentPlayingResponse, error) {
-	// TODO: When not listening anything, the current playing endpoint returns 204.
-	// In this case, I should probably "/me/player/recently-played". This would
-	// require the "user-read-recently-played" scope though.
-	// Ignoring this use case for now.
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("failed to read current playing song response body:", err)
@@ -114,7 +158,24 @@ func parseCurrentPlayingSongResponse(resp *http.Response) (*spotifyapi.CurrentPl
 	return &currentPlayingResponse, nil
 }
 
-func convertAPIResponseToBackendResponse(apiResponse *spotifyapi.CurrentPlayingResponse) *CurrentSong {
+func parseLastPlayedSongResponse(resp *http.Response) (*spotifyapi.LastPlayedResponse, error) {
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("failed to read last played song response body:", err)
+		return nil, err
+	}
+
+	var lastPlayedResponse spotifyapi.LastPlayedResponse
+	err = json.Unmarshal(bodyBytes, &lastPlayedResponse)
+	if err != nil {
+		log.Println("failed to unmarshal current playing song JSON:", err)
+		return nil, err
+	}
+
+	return &lastPlayedResponse, nil
+}
+
+func convertCurrentPlayingResponse(apiResponse *spotifyapi.CurrentPlayingResponse) *CurrentSong {
 	return &CurrentSong{
 		IsPlaying: apiResponse.IsPlaying,
 
@@ -126,5 +187,20 @@ func convertAPIResponseToBackendResponse(apiResponse *spotifyapi.CurrentPlayingR
 		// Too many artists make it ugly. The first one is enough.
 		// Plus, feats often include other artists in the name anyway.
 		Artist: apiResponse.Item.Artists[0].Name,
+	}
+}
+
+func convertLastPlayedToResponse(apiResponse *spotifyapi.LastPlayedResponse) *CurrentSong {
+	return &CurrentSong{
+		IsPlaying: false,
+
+		ProgressMs: apiResponse.Items[0].Track.DurationMs,
+
+		DurationMs: apiResponse.Items[0].Track.DurationMs,
+		Song:       apiResponse.Items[0].Track.Name,
+
+		// Too many artists make it ugly. The first one is enough.
+		// Plus, feats often include other artists in the name anyway.
+		Artist: apiResponse.Items[0].Track.Artists[0].Name,
 	}
 }
