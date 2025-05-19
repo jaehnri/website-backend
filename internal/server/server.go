@@ -7,18 +7,21 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/jaehnri/website-backend/internal/ideas"
 	"github.com/jaehnri/website-backend/internal/spotify"
 )
 
 type Server struct {
 	httpAddress   string
-	spotifyClient spotify.SpotifyClient
+	spotifyClient *spotify.SpotifyClient
+	ideasClient   *ideas.IdeasClient
 }
 
 func NewServer(httpAddress string) *Server {
 	return &Server{
 		httpAddress:   httpAddress,
-		spotifyClient: *spotify.NewSpotifyClient(),
+		spotifyClient: spotify.NewSpotifyClient(),
+		ideasClient:   ideas.NewIdeasClient(),
 	}
 }
 
@@ -26,6 +29,7 @@ func (s *Server) startHTTPServer() {
 	log.Println("starting HTTP server")
 
 	http.HandleFunc("/now-playing", s.spotifyClient.HandleNowPlaying)
+	http.HandleFunc("/ideas", s.ideasClient.HandleGetIdeas)
 
 	log.Fatal(http.ListenAndServe(s.httpAddress, nil))
 }
