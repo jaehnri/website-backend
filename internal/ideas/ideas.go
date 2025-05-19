@@ -27,6 +27,7 @@ func (s *IdeasClient) HandleGetIdeas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: Think about this later!
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	encoder := json.NewEncoder(w)
