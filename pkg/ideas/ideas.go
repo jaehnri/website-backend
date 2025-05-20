@@ -3,7 +3,7 @@ package ideas
 import "time"
 
 // GetIdeasRequest is the HTTP request response for GET /ideas.
-// Ideas can be searched using Limit and Offset.
+// Ideas can be filtered using Limit and Offset.
 type GetIdeasRequest struct {
 	Limit  int `json:"limit"`
 	Offset int `json:"offset"`
@@ -17,12 +17,12 @@ type GetIdeasResponse struct {
 
 // PostIdeaResponse is the HTTP request for POST /ideas.
 type PostIdeaRequest struct {
-	Idea Idea `json:"idea"`
+	Idea string `json:"idea"`
 }
 
 // PostIdeaResponse is the HTTP response for POST /ideas.
 type PostIdeaResponse struct {
-	Idea *Idea `json:"idea"`
+	*Idea
 }
 
 // Idea represents an idea that I had. Or a thought. Or something.

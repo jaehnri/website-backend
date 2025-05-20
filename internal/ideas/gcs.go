@@ -2,11 +2,13 @@ package ideas
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/jaehnri/website-backend/pkg/ideas"
@@ -98,7 +100,14 @@ func (i *IdeasGCSClient) PostIdea(req *ideas.PostIdeaRequest) (*ideas.PostIdeaRe
 	if currentContent != "" && !strings.HasSuffix(currentContent, "\n") {
 		currentContent += "\n"
 	}
-	newContent := currentContent + req.Idea.Idea + "\n" // Add the new line and ensure it ends with a newline
+
+	// TODO: Encode the Idea into a proto?
+	idea := idea(req)
+	jsonIdea, err := json.Marshal(idea)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get json idea: %v", err)
+	}
+	newContent := currentContent + string(jsonIdea) + "\n" // Add the new line and ensure it ends with a newline
 
 	// 3. Overwrite the original object with the new content
 	// Use a writer to upload the new content. This will overwrite the existing object.
@@ -116,7 +125,7 @@ func (i *IdeasGCSClient) PostIdea(req *ideas.PostIdeaRequest) (*ideas.PostIdeaRe
 	}
 
 	return &ideas.PostIdeaResponse{
-		Idea: &req.Idea,
+		Idea: idea,
 	}, nil
 }
 
@@ -136,4 +145,11 @@ func parseIdeas(req *ideas.GetIdeasRequest, fileContent string) []*ideas.Idea {
 
 	// TODO: Prioritize fresh ideas first
 	return ideasList
+}
+
+func idea(req *ideas.PostIdeaRequest) *ideas.Idea {
+	return &ideas.Idea{
+		Idea: req.Idea,
+		Time: time.Now(),
+	}
 }
