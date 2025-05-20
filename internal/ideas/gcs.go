@@ -62,8 +62,9 @@ func (i *IdeasGCSClient) GetIdeas(req *ideas.GetIdeasRequest) (*ideas.GetIdeasRe
 	}
 
 	// No need to sort since they are always appended to GCS object end.
+	// TODO: What if they're appended a the top	?
 	return &ideas.GetIdeasResponse{
-		Ideas: parseIdeas(string(data)),
+		Ideas: parseIdeas(req, string(data)),
 	}, nil
 }
 
@@ -128,12 +129,9 @@ func (i *IdeasGCSClient) PostIdea(req *ideas.PostIdeaRequest) (*ideas.PostIdeaRe
 // string and parses line-by-line.
 func parseIdeas(req *ideas.GetIdeasRequest, fileContent string) []*ideas.Idea {
 	gcsLines := strings.Split(fileContent, "\n")
+	limit := min(req.Limit, len(gcsLines))
 
-	limit := len(gcsLines)
-	if req.Limit < limit {
-		limit = req.Limit
-	}
-
+	// TODO: Use req.Offset too
 	ideasList := make([]*ideas.Idea, 0, limit)
 	for _, v := range gcsLines {
 		ideasList = append(ideasList, &ideas.Idea{
