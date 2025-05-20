@@ -3,11 +3,19 @@ package ideas
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+
+	"github.com/jaehnri/website-backend/pkg/ideas"
+)
+
+const (
+	DefaultOffset = 0
+	DefaultLimit  = 50
 )
 
 type IdeasRepository interface {
-	GetIdeas() ([]string, error)
-	PostIdea(string) error
+	GetIdeas(req *ideas.GetIdeasRequest) (*ideas.GetIdeasResponse, error)
+	PostIdea(req *ideas.PostIdeaRequest) (*ideas.PostIdeaResponse, error)
 }
 
 type IdeasClient struct {
@@ -20,8 +28,60 @@ func NewIdeasClient() *IdeasClient {
 	}
 }
 
+func (s *IdeasClient) HandleIdeas(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.HandleGetIdeas(w, r)
+	case http.MethodPost:
+	default:
+		// Respond with 405 Method Not Allowed for other methods
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+	}
+
+}
+
 func (s *IdeasClient) HandleGetIdeas(w http.ResponseWriter, r *http.Request) {
-	ideas, err := s.ideasRepo.GetIdeas()
+	ideas, err := s.ideasRepo.GetIdeas(parseGetIdeasRequest(r))
+	if err != nil {
+		http.Error(w, "failed to fetch my ideas", http.StatusInternalServerError)
+		return
+	}
+
+	// TODO: Think about this later!
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	encoder := json.NewEncoder(w)
+	err = encoder.Encode(ideas)
+	if err != nil {
+		http.Error(w, "failed to encode json response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func parseGetIdeasRequest(r *http.Request) *ideas.GetIdeasRequest {
+	query := r.URL.Query()
+
+	offsetStr := query.Get("offset")
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil {
+		offset = DefaultOffset
+	}
+
+	limitStr := query.Get("limit")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		limit = DefaultOffset
+	}
+
+	return &ideas.GetIdeasRequest{
+		Offset: offset,
+		Limit:  limit,
+	}
+}
+
+func (s *IdeasClient) HandlePostIdeas(w http.ResponseWriter, r *http.Request) {
+	ideas, err := s.ideasRepo.PostIdea(nil)
+
 	if err != nil {
 		http.Error(w, "failed to fetch my ideas", http.StatusInternalServerError)
 		return

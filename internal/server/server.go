@@ -29,7 +29,7 @@ func (s *Server) startHTTPServer() {
 	log.Println("starting HTTP server")
 
 	http.HandleFunc("/now-playing", s.spotifyClient.HandleNowPlaying)
-	http.HandleFunc("/ideas", s.ideasClient.HandleGetIdeas)
+	http.HandleFunc("/ideas", s.ideasClient.HandleIdeas)
 
 	log.Fatal(http.ListenAndServe(s.httpAddress, nil))
 }
