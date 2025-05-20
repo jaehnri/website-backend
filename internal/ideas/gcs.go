@@ -17,7 +17,6 @@ const (
 )
 
 type IdeasGCSClient struct {
-	bucket    *storage.BucketHandle
 	object    *storage.ObjectHandle
 	gcsClient *storage.Client
 }
@@ -38,13 +37,10 @@ func NewIdeasGCSClient() *IdeasGCSClient {
 		log.Fatalf("Failed to create GCS client: %v", err)
 	}
 
-	bucket := client.Bucket(bucketName)
-	obj := bucket.Object(objectName)
+	obj := client.Bucket(bucketName).Object(objectName)
 	return &IdeasGCSClient{
 		gcsClient: client,
-
-		bucket: bucket,
-		object: obj,
+		object:    obj,
 	}
 }
 
@@ -52,7 +48,7 @@ func NewIdeasGCSClient() *IdeasGCSClient {
 func (i *IdeasGCSClient) GetIdeas(req *ideas.GetIdeasRequest) (*ideas.GetIdeasResponse, error) {
 	rc, err := i.object.NewReader(context.Background())
 	if err != nil {
-		log.Printf("failed to create object reader for %s/%s: %v", i.bucket.BucketName(), i.object.ObjectName(), err)
+		log.Printf("failed to create object reader for %s/%s: %v", i.object.BucketName(), i.object.ObjectName(), err)
 	}
 	defer rc.Close()
 
@@ -69,7 +65,7 @@ func (i *IdeasGCSClient) GetIdeas(req *ideas.GetIdeasRequest) (*ideas.GetIdeasRe
 }
 
 func (i *IdeasGCSClient) PostIdea(req *ideas.PostIdeaRequest) (*ideas.PostIdeaResponse, error) {
-	// 	log.Printf("Attempting to append \"%s\" to gs://%s/%s", idea, i.bucket.BucketName(), i.object.ObjectName())
+	// log.Printf("Attempting to append \"%s\" to gs://%s/%s", idea, i.bucket.BucketName(), i.object.ObjectName())
 
 	// 	// 1. Read the existing content of the object
 	// 	rc, err := i.object.NewReader(context.Background())
@@ -139,6 +135,6 @@ func parseIdeas(req *ideas.GetIdeasRequest, fileContent string) []*ideas.Idea {
 		})
 	}
 
-	// TODO: I need to prioritize fresh ideas first.
+	// TODO: Prioritize fresh ideas first
 	return ideasList
 }
