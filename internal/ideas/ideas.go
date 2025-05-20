@@ -33,6 +33,7 @@ func (s *IdeasClient) HandleIdeas(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		s.HandleGetIdeas(w, r)
 	case http.MethodPost:
+		s.HandlePostIdeas(w, r)
 	default:
 		// Respond with 405 Method Not Allowed for other methods
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -80,10 +81,15 @@ func parseGetIdeasRequest(r *http.Request) *ideas.GetIdeasRequest {
 }
 
 func (s *IdeasClient) HandlePostIdeas(w http.ResponseWriter, r *http.Request) {
-	ideas, err := s.ideasRepo.PostIdea(nil)
-
+	req, err := parsePostIdeaRequest(r)
 	if err != nil {
-		http.Error(w, "failed to fetch my ideas", http.StatusInternalServerError)
+		http.Error(w, "failed to parse idea", http.StatusBadRequest)
+		return
+	}
+
+	idea, err := s.ideasRepo.PostIdea(req)
+	if err != nil {
+		http.Error(w, "failed to post new idea", http.StatusInternalServerError)
 		return
 	}
 
@@ -91,9 +97,20 @@ func (s *IdeasClient) HandlePostIdeas(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	encoder := json.NewEncoder(w)
-	err = encoder.Encode(ideas)
+	err = encoder.Encode(idea)
 	if err != nil {
 		http.Error(w, "failed to encode json response", http.StatusInternalServerError)
 		return
 	}
+}
+
+func parsePostIdeaRequest(r *http.Request) (*ideas.PostIdeaRequest, error) {
+	// TODO: I actually don't want to let users decide the time of the idea.
+	var req ideas.PostIdeaRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		return nil, err
+	}
+
+	return &req, nil
 }

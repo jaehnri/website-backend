@@ -2,6 +2,7 @@ package ideas
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -58,67 +59,65 @@ func (i *IdeasGCSClient) GetIdeas(req *ideas.GetIdeasRequest) (*ideas.GetIdeasRe
 	}
 
 	// No need to sort since they are always appended to GCS object end.
-	// TODO: What if they're appended a the top	?
+	// TODO: What if they're appended a the top?
 	return &ideas.GetIdeasResponse{
 		Ideas: parseIdeas(req, string(data)),
 	}, nil
 }
 
 func (i *IdeasGCSClient) PostIdea(req *ideas.PostIdeaRequest) (*ideas.PostIdeaResponse, error) {
-	// log.Printf("Attempting to append \"%s\" to gs://%s/%s", idea, i.bucket.BucketName(), i.object.ObjectName())
+	// 1. Read the existing content of the object
+	rc, err := i.object.NewReader(context.Background())
+	if err != nil {
+		// Handle the case where the object might not exist yet.
+		// If it's a new file, we'll just start with the new line.
+		if err == storage.ErrObjectNotExist {
+			log.Printf("Object gs://%s/%s does not exist. Creating it with the new line.", i.object.BucketName(), i.object.ObjectName())
+			// No existing content, so currentContent will be empty.
+		} else {
+			return nil, fmt.Errorf("failed to create object reader for %s/%s: %v", i.object.BucketName(), i.object.ObjectName(), err)
+		}
+	}
+	defer func() {
+		if rc != nil { // Ensure rc is not nil before closing
+			rc.Close()
+		}
+	}()
 
-	// 	// 1. Read the existing content of the object
-	// 	rc, err := i.object.NewReader(context.Background())
-	// 	if err != nil {
-	// 		// Handle the case where the object might not exist yet.
-	// 		// If it's a new file, we'll just start with the new line.
-	// 		if err == storage.ErrObjectNotExist {
-	// 			log.Printf("Object gs://%s/%s does not exist. Creating it with the new line.", i.bucket.BucketName(), i.object.ObjectName())
-	// 			// No existing content, so currentContent will be empty.
-	// 		} else {
-	// 			return fmt.Errorf("failed to create object reader for %s/%s: %v", i.bucket.BucketName(), i.object.ObjectName(), err)
-	// 		}
-	// 	}
-	// 	defer func() {
-	// 		if rc != nil { // Ensure rc is not nil before closing
-	// 			rc.Close()
-	// 		}
-	// 	}()
+	var currentContent string
+	if rc != nil { // Only read if the object existed
+		dataBytes, err := io.ReadAll(rc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read object contents: %v", err)
+		}
+		currentContent = string(dataBytes)
+	}
 
-	// 	var currentContent string
-	// 	if rc != nil { // Only read if the object existed
-	// 		dataBytes, err := io.ReadAll(rc)
-	// 		if err != nil {
-	// 			return fmt.Errorf("failed to read object contents: %v", err)
-	// 		}
-	// 		currentContent = string(dataBytes)
-	// 	}
+	// 2. Modify the content in memory by appending the new line
+	// Ensure a newline if content already exists and doesn't end with one.
+	if currentContent != "" && !strings.HasSuffix(currentContent, "\n") {
+		currentContent += "\n"
+	}
+	newContent := currentContent + req.Idea.Idea + "\n" // Add the new line and ensure it ends with a newline
 
-	// 	// 2. Modify the content in memory by appending the new line
-	// 	// Ensure a newline if content already exists and doesn't end with one.
-	// 	if currentContent != "" && !strings.HasSuffix(currentContent, "\n") {
-	// 		currentContent += "\n"
-	// 	}
-	// 	newContent := currentContent + idea + "\n" // Add the new line and ensure it ends with a newline
+	// 3. Overwrite the original object with the new content
+	// Use a writer to upload the new content. This will overwrite the existing object.
+	wc := i.object.NewWriter(context.Background())
+	wc.ContentType = "text/plain"
 
-	// 	// 3. Overwrite the original object with the new content
-	// 	// Use a writer to upload the new content. This will overwrite the existing object.
-	// 	wc := i.object.NewWriter(context.Background())
-	// 	// Optional: Set content type if known, e.g., "text/plain"
-	// 	wc.ContentType = "text/plain"
+	if _, err := fmt.Fprint(wc, newContent); err != nil {
+		wc.Close() // Close writer even on write error
+		return nil, fmt.Errorf("failed to write new content to object: %v", err)
+	}
 
-	// 	if _, err := fmt.Fprint(wc, newContent); err != nil {
-	// 		wc.Close() // Close writer even on write error
-	// 		return fmt.Errorf("failed to write new content to object: %v", err)
-	// 	}
+	if err := wc.Close(); err != nil {
+		log.Printf("failed to close object writer: %v", err)
+		return nil, err
+	}
 
-	// 	if err := wc.Close(); err != nil {
-	// 		log.Printf("failed to close object writer: %v", err)
-	// 		return err
-	// 	}
-
-	// 	log.Printf("Successfully appended line to gs://%s/%s", i.bucket.BucketName(), i.object.ObjectName())
-	return nil, nil
+	return &ideas.PostIdeaResponse{
+		Idea: &req.Idea,
+	}, nil
 }
 
 // Since every idea is a single line, parseIdeas receives all ideas in a single
