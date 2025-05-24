@@ -71,7 +71,7 @@ func parseGetIdeasRequest(r *http.Request) *ideas.GetIdeasRequest {
 	limitStr := query.Get("limit")
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil {
-		limit = DefaultOffset
+		limit = DefaultLimit
 	}
 
 	return &ideas.GetIdeasRequest{
@@ -105,7 +105,6 @@ func (s *IdeasClient) HandlePostIdeas(w http.ResponseWriter, r *http.Request) {
 }
 
 func parsePostIdeaRequest(r *http.Request) (*ideas.PostIdeaRequest, error) {
-	// TODO: I actually don't want to let users decide the time of the idea.
 	var req ideas.PostIdeaRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
